@@ -59,8 +59,8 @@ if len(plates) > 0:
     
     # Применяем пороговую обработку для улучшения распознавания текста
     thresh = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-    cv2.imshow('image', thresh)
-    cv2.waitKey()
+    # cv2.imshow('image', thresh)
+    # cv2.waitKey()
     
     # Используем Tesseract OCR для распознавания текста на номерном знаке
     recognized_text = pytesseract.image_to_string(thresh, lang='eng', config='--psm 3 --oem 3 -c tessedit_char_whitelist=ABEKMHOPCTYX0123456789')
