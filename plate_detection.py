@@ -7,7 +7,7 @@ from ultralytics import YOLO
 model = YOLO('./trained_models/best.pt')
 
 # Путь до фотографии
-image_path = './cars/1.jpg'
+image_path = './cars/16.jpg'
 
 # Поиск автомобильного номера на фотографии
 results = model.predict(source=image_path, save=False)
@@ -38,5 +38,6 @@ for result in results:
 
         # Вывод автомобильного номера
         cv2.imshow('License Plate', plate)
+        cv2.imwrite('16.jpg', plate)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
