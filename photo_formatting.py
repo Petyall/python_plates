@@ -89,7 +89,7 @@ def image_preprocess(image_path: str):
     final_image = apply_morphological_operations(corrected_image)
 
     # 6. Сохранение результата
-    save_image(final_image, 'skew_corrected.png')
+    save_image(final_image, f'./detected_plates/{image_path[9:]}')
 
-
-image_preprocess("./plates/8_license_plate.jpg")
+for i in range (1, 16):
+    image_preprocess(f"./plates/{i}_license_plate.jpg")
