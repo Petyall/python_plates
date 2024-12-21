@@ -1,94 +1,95 @@
 import cv2
 import numpy as np
 
-
-def background_removing(image):
-    # Применение пороговой обработки
-    _, threshold = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    # Поиск контуров
-    contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Предположение, что номерной знак - самый крупный прямоугольный контур на изображении
-    license_plate_contour = max(contours, key=cv2.contourArea)
-
-    # Создание маски
-    mask = np.zeros_like(image)
-
-    # Заполнение маски белым внутри контуров номерного знака
-    cv2.drawContours(mask, [license_plate_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
-
-    # Наложение маски на изображение
-    result = cv2.bitwise_and(image, mask)
-
-    # Показать исходное изображение и результат
-    # cv2.imshow('Original Image', image)
-    # cv2.imshow('Image with Background Removed', result)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-
-    return result
+from scipy import ndimage
+from PIL import Image as im
 
 
-def adjust_threshold_by_brightness(image):    
-    # Анализ яркости: вычислить среднюю яркость
-    mean_brightness = np.mean(image)
-    
-    # Настройка параметров в зависимости от яркости
-    if mean_brightness < 50:
-        # Темное изображение, уменьшить порог и фильтрацию
-        threshold_value = 80
-        blur_kernel = (3, 3)
-    elif mean_brightness < 150:
-        # Средняя яркость, использовать стандартные параметры
-        threshold_value = 120
-        blur_kernel = (5, 5)
-    else:
-        # Светлое изображение, увеличить порог и размытие
-        threshold_value = 160
-        blur_kernel = (7, 7)
-    
-    # Применение размытия для уменьшения шума
-    blurred = cv2.GaussianBlur(image, blur_kernel, 0)
-    
-    # Применение пороговой обработки
-    _, threshold = cv2.threshold(blurred, threshold_value, 255, cv2.THRESH_BINARY)
-    
-    # print(f"Средняя яркость изображения: {brightness}")
-    # cv2.imshow('Threshold Image', threshold_image)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+def resize_to_dpi(image, target_dpi=300, current_dpi=96):
+    """
+    Изменяет размер изображения для достижения указанного DPI
+    """
+    scale_factor = target_dpi / current_dpi
+    new_width = int(image.shape[1] * scale_factor)
+    new_height = int(image.shape[0] * scale_factor)
 
-    return threshold
+    return cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
 
 
-def preprocess_image(image_path):
-    # Загрузка изображения
-    img = cv2.imread(image_path)
+def binarize_image(image, threshold=127):
+    """
+    Преобразует изображение в бинарное
+    """
+    _, binary_image = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
 
-    # Перевод в черно-белое изображение
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return binary_image
 
-    # Удаление шумов при помощи размытия
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    background_remove = background_removing(blurred)
+def find_optimal_angle(binary_image, delta=1, limit=5):
+    """
+    Находит оптимальный угол для коррекции наклона изображения
+    """
+    def find_score(arr, angle):
+        rotated = ndimage.rotate(arr, angle, reshape=False, order=0)
+        hist = np.sum(rotated, axis=1)
+        score = np.sum((hist[1:] - hist[:-1]) ** 2)
 
-    binary = adjust_threshold_by_brightness(background_remove)
+        return score
 
-    # Шаг 6: Эрозия и дилатация
+    angles = np.arange(-limit, limit + delta, delta)
+    scores = [find_score(binary_image, angle) for angle in angles]
+    best_angle = angles[np.argmax(scores)]
+
+    return best_angle
+
+
+def correct_skew(image, angle):
+    """
+    Корректирует наклон изображения на указанный угол
+    """
+
+    return ndimage.rotate(image, angle, reshape=False, order=0)
+
+
+def apply_morphological_operations(image):
+    """
+    Применяет эрозию, дилатацию и сглаживание к изображению
+    """
     kernel = np.ones((3, 3), np.uint8)
-    eroded = cv2.erode(binary, kernel, iterations=1)
+    eroded = cv2.erode(image, kernel, iterations=1)
     dilated = cv2.dilate(eroded, kernel, iterations=1)
-
-    # Шаг 7: Сглаживание
     smoothed = cv2.GaussianBlur(dilated, (5, 5), 0)
 
     return smoothed
 
 
-processed_image = preprocess_image('./16.jpg')
+def save_image(image, filename):
+    """
+    Сохраняет изображение в файл
+    """
 
-cv2.imshow('Processed Image', processed_image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+    im.fromarray(image).save(filename)
+
+
+def image_preprocess(image_path: str):
+    # 1. Чтение изображения
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+    # 2. Изменение размера изображения https://tesseract-ocr.github.io/tessdoc/ImproveQuality#:~:text=a%20DPI%20of-,at%20least%20300%20dpi,-%2C%20so%20it%20may
+    resized_image = resize_to_dpi(image, target_dpi=300)
+
+    # 3. Бинаризация изображения
+    binarized_image = binarize_image(resized_image)
+
+    # 4. Коррекция угла наклона текста https://towardsdatascience.com/pre-processing-in-ocr-fc231c6035a7#:~:text=2.-,Skew%20Correction,-%3A%20While%20scanning
+    best_angle = find_optimal_angle(binarized_image)
+    corrected_image = correct_skew(binarized_image, best_angle)
+
+    # 5. Морфологическая обработка изображения
+    final_image = apply_morphological_operations(corrected_image)
+
+    # 6. Сохранение результата
+    save_image(final_image, 'skew_corrected.png')
+
+
+image_preprocess("./plates/8_license_plate.jpg")
