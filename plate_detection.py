@@ -1,44 +1,66 @@
 import cv2
 
-from ultralytics import YOLO
+from utils import load_model, load_image
 
 
-# Загрузка натренированной модели
-model = YOLO('./trained_models/plate_detection.pt')
+def detect_plate(model, image, image_path, padding=10):
+    """
+    Распознавание границ автомобильного номера на фотографии
+    и сохранение номера с максимальной вероятностью
+    """
+    results = model(image)
 
-for i in range(1, 16):
-    # Путь до фотографии
-    image_path = f'./data/cars/{i}.jpg'
+    best_plate = None
+    max_confidence = -1
 
-    # Поиск автомобильного номера на фотографии
-    results = model.predict(source=image_path, save=False)
-
-    # Загрузка оригинального изображения
-    img = cv2.imread(image_path)
-
-    # Параметр отступа пикселей на изображении (нужно, чтобы случайно не обрезать символы на номере)
-    padding = 10
-
-
-    # Цикл, перебирающий все распознанные номерные знаки на изображении
     for result in results:
-        # Получение координат ограничивающего прямоугольника (границы распознанного номера на изображении)
-        boxes = result.boxes.xyxy.cpu().numpy()  # Перевод координат в массив
+        # Получение координат и вероятностей распознанных номеров
+        boxes = result.boxes.xyxy.cpu().numpy()  # Координаты
+        confidences = result.boxes.conf.cpu().numpy()  # Уверенности
 
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box)  # Перевод координаты в int
+        for box, confidence in zip(boxes, confidences):
+            if confidence > max_confidence:
+                max_confidence = confidence
+                x1, y1, x2, y2 = map(int, box)
 
-            # Добавление отступов с условием, чтобы они не выходили за границы изображения
-            x1 = max(0, x1 - padding)
-            y1 = max(0, y1 - padding)
-            x2 = min(img.shape[1], x2 + padding)
-            y2 = min(img.shape[0], y2 + padding)
+                # Добавление отступов с условием, чтобы они не выходили за границы изображения
+                x1 = max(0, x1 - padding)
+                y1 = max(0, y1 - padding)
+                x2 = min(image.shape[1], x2 + padding)
+                y2 = min(image.shape[0], y2 + padding)
 
-            # Вырезание номерного знака с изображения
-            plate = img[y1:y2, x1:x2]
+                # Сохранение текущего номера с наибольшей вероятностью
+                best_plate = image[y1:y2, x1:x2]
 
-            # Вывод автомобильного номера
-            # cv2.imshow('License Plate', plate)
-            cv2.imwrite(f'./data/detected_plates/{i}.jpg', plate)
-            # cv2.waitKey(0)
-            # cv2.destroyAllWindows()
+    if best_plate is not None:
+        # Сохранение изображения с наибольшей вероятностью
+        cv2.imwrite(f'./data/detected_plates/{image_path[12:]}', best_plate)
+        return True
+
+    return False
+
+if __name__ == "__main__":
+    model = load_model("./trained_models/plate_detection.pt")
+
+    # Обработка изображений
+    for i in range(1, 16):
+        image_path = f"./data/cars/{i}.jpg"
+        image = load_image(image_path)
+
+        if image is not None:
+            success = detect_plate(model, image, image_path)
+            if success:
+                print(f"Изображение {i} обработано успешно.")
+            else:
+                print(f"На изображении {i} номера не обнаружены.")
+
+    # # Обработка изображения
+    # image_path = "./data/cars/2.jpg"
+    # image = load_image(image_path)
+
+    # if image is not None:
+    #     success = detect_plate(model, image, image_path)
+    #     if success:
+    #         print(f"Изображение {image_path[12:]} обработано успешно.")
+    #     else:
+    #         print(f"На изображении {image_path[12:]} номера не обнаружены.")
